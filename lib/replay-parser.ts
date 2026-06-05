@@ -5,6 +5,7 @@ import type {
   SummaryEvent,
   TurnUsage,
   ToolCall,
+  AgentToolResult,
 } from '@/types/claude'
 import { estimateCostFromUsage } from '@/lib/pricing'
 import { readJSONLLines } from '@/lib/claude-reader'
@@ -30,6 +31,8 @@ export async function parseSessionReplay(
 
   // Build a map of turn_duration events keyed by parentUuid
   const turnDurations: Map<string, number> = new Map()
+  // Build a map of agentResults keyed by tool_use_id (from toolUseResult on Agent tool_result lines)
+  const agentResults: Map<string, AgentToolResult> = new Map()
   for (const l of lines) {
     if (l.type === 'system' && l.subtype === 'turn_duration' && l.parentUuid) {
       turnDurations.set(l.parentUuid, l.durationMs ?? 0)
@@ -38,6 +41,26 @@ export async function parseSessionReplay(
     if (!slug && l.slug)       slug = l.slug
     if (!version && l.version) version = l.version
     if (!gitBranch && l.gitBranch && l.gitBranch !== 'HEAD') gitBranch = l.gitBranch
+    // Capture toolUseResult from Agent tool_result entries
+    if (l.type === 'user' && l.toolUseResult?.agentId) {
+      const msg = l.message ?? {}
+      const content = msg.content
+      if (Array.isArray(content)) {
+        for (const c of content) {
+          if (c.type === 'tool_result' && c.tool_use_id) {
+            agentResults.set(c.tool_use_id, {
+              agentId: l.toolUseResult.agentId,
+              agentType: l.toolUseResult.agentType ?? 'general-purpose',
+              status: l.toolUseResult.status ?? 'completed',
+              totalTokens: l.toolUseResult.totalTokens,
+              totalDurationMs: l.toolUseResult.totalDurationMs,
+              totalToolUseCount: l.toolUseResult.totalToolUseCount,
+              toolStats: l.toolUseResult.toolStats,
+            })
+          }
+        }
+      }
+    }
   }
 
   // Track previous assistant timestamp for response-time calculation
@@ -85,10 +108,12 @@ export async function parseSessionReplay(
             const resultContent = Array.isArray(c.content)
               ? c.content.map((x: AnyLine) => x.text ?? '').join('')
               : (typeof c.content === 'string' ? c.content : '')
+            const toolUseId = c.tool_use_id ?? ''
             tool_results.push({
-              tool_use_id: c.tool_use_id ?? '',
+              tool_use_id: toolUseId,
               content: resultContent.slice(0, 2000),
               is_error: c.is_error ?? false,
+              agentResult: agentResults.get(toolUseId),
             })
           }
         }

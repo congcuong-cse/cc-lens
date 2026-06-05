@@ -7,6 +7,8 @@ import type {
   Facet,
   HistoryEntry,
   ModelUsage,
+  SubagentMeta,
+  SubagentInfo,
 } from '@/types/claude'
 import { slugToPath } from '@/lib/decode'
 
@@ -442,6 +444,70 @@ export async function readJSONLLines(
       } catch { /* skip malformed */ }
     }
   } catch { /* file missing */ }
+}
+
+/** Find the subagents directory for a given session ID */
+async function getSubagentsDir(sessionId: string): Promise<string | null> {
+  const slugs = await listProjectSlugs()
+  for (const slug of slugs) {
+    const subagentDir = claudePath('projects', slug, sessionId, 'subagents')
+    try {
+      await fs.access(subagentDir)
+      return subagentDir
+    } catch { /* try next slug */ }
+  }
+  return null
+}
+
+/** List all subagents for a session by reading their .meta.json files */
+export async function listSessionSubagents(sessionId: string): Promise<SubagentInfo[]> {
+  const subagentDir = await getSubagentsDir(sessionId)
+  if (!subagentDir) return []
+  try {
+    const files = await fs.readdir(subagentDir)
+    const metaFiles = files.filter(f => f.endsWith('.meta.json'))
+    const results: SubagentInfo[] = []
+    await Promise.all(metaFiles.map(async metaFile => {
+      // Strip the "agent-" prefix that Claude Code writes to filenames
+      const agentId = metaFile.replace('.meta.json', '').replace(/^agent-/, '')
+      try {
+        const raw = await fs.readFile(path.join(subagentDir, metaFile), 'utf-8')
+        const meta = JSON.parse(raw) as SubagentMeta
+        results.push({ agentId, meta })
+      } catch { /* skip malformed */ }
+    }))
+    return results.sort((a, b) => a.agentId.localeCompare(b.agentId))
+  } catch {
+    return []
+  }
+}
+
+/** Find the JSONL file for a specific subagent within a session */
+export async function findSubagentJSONL(sessionId: string, agentId: string): Promise<string | null> {
+  const subagentDir = await getSubagentsDir(sessionId)
+  if (!subagentDir) return null
+  // Claude Code prefixes filenames with "agent-"; try that first, then bare id
+  for (const filename of [`agent-${agentId}.jsonl`, `${agentId}.jsonl`]) {
+    const agentFile = path.join(subagentDir, filename)
+    try {
+      await fs.access(agentFile)
+      return agentFile
+    } catch { /* try next */ }
+  }
+  return null
+}
+
+/** Find the .meta.json for a specific subagent within a session */
+export async function findSubagentMeta(sessionId: string, agentId: string): Promise<SubagentMeta | null> {
+  const subagentDir = await getSubagentsDir(sessionId)
+  if (!subagentDir) return null
+  for (const filename of [`agent-${agentId}.meta.json`, `${agentId}.meta.json`]) {
+    try {
+      const raw = await fs.readFile(path.join(subagentDir, filename), 'utf-8')
+      return JSON.parse(raw) as SubagentMeta
+    } catch { /* try next */ }
+  }
+  return null
 }
 
 /** Find which project slug contains a given session ID */

@@ -138,7 +138,7 @@ export interface ReplayTurn {
   usage?: TurnUsage
   text?: string
   tool_calls?: ToolCall[]
-  tool_results?: Array<{ tool_use_id: string; content: string; is_error: boolean }>
+  tool_results?: Array<{ tool_use_id: string; content: string; is_error: boolean; agentResult?: AgentToolResult }>
   has_thinking?: boolean
   thinking_text?: string
   estimated_cost?: number
@@ -159,6 +159,35 @@ export interface SummaryEvent {
   uuid: string
   summary: string
   leaf_uuid: string
+}
+
+export interface AgentToolResult {
+  agentId: string
+  agentType: string
+  status: string
+  totalTokens?: number
+  totalDurationMs?: number
+  totalToolUseCount?: number
+  toolStats?: {
+    readCount?: number
+    searchCount?: number
+    bashCount?: number
+    editFileCount?: number
+    linesAdded?: number
+    linesRemoved?: number
+    otherToolCount?: number
+  }
+}
+
+export interface SubagentMeta {
+  agentType: string
+  description: string
+  toolUseId: string
+}
+
+export interface SubagentInfo {
+  agentId: string
+  meta: SubagentMeta
 }
 
 export interface ReplayData {

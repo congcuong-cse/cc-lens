@@ -19,7 +19,8 @@ interface TurnCardProps {
   turn: ReplayTurn
   turnNumber: number
   compactionBefore?: CompactionEvent
-  toolResults: Map<string, { content: string; is_error: boolean }>
+  toolResults: Map<string, { content: string; is_error: boolean; agentResult?: import('@/types/claude').AgentToolResult }>
+  sessionId?: string
 }
 
 function TokenBreakdown({ turn }: { turn: ReplayTurn }) {
@@ -88,7 +89,7 @@ export function UserTurnCard({ turn, compactionBefore }: TurnCardProps) {
   )
 }
 
-export function AssistantTurnCard({ turn, turnNumber, toolResults }: TurnCardProps) {
+export function AssistantTurnCard({ turn, turnNumber, toolResults, sessionId }: TurnCardProps) {
   const [thinkingOpen, setThinkingOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
 
@@ -164,6 +165,7 @@ export function AssistantTurnCard({ turn, turnNumber, toolResults }: TurnCardPro
               key={tc.id}
               tool={tc}
               result={toolResults.get(tc.id)}
+              sessionId={sessionId}
             />
           ))}
         </div>
