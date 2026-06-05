@@ -163,5 +163,22 @@ export function estimateTotalCostFromModel(model: string, usage: ModelUsage): nu
   )
 }
 
-export { getPricing }
+// ─── Context window limits ────────────────────────────────────────────────────
+
+// The standard Claude context window. Opus 4.6+/Sonnet 4.6 can run a 1M-token
+// window when a `[1m]` model variant is selected; that shows up in the model id.
+const DEFAULT_CONTEXT_LIMIT = 200_000
+const EXTENDED_CONTEXT_LIMIT = 1_000_000
+
+/**
+ * Best-effort context-window size (in tokens) for a model id. Returns the
+ * 1M-token window when the id advertises the extended-context `[1m]` variant,
+ * otherwise the standard 200K window.
+ */
+export function getContextLimit(model: string | undefined): number {
+  if (!model) return DEFAULT_CONTEXT_LIMIT
+  return /\[?1m\]?/i.test(model) ? EXTENDED_CONTEXT_LIMIT : DEFAULT_CONTEXT_LIMIT
+}
+
+export { getPricing, DEFAULT_CONTEXT_LIMIT, EXTENDED_CONTEXT_LIMIT }
 export type { ModelPricing }

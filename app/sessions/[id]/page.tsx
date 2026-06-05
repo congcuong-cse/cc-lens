@@ -6,6 +6,7 @@ import { TopBar } from '@/components/layout/top-bar'
 import { SessionSidebar } from '@/components/sessions/replay/session-sidebar'
 import { UserTurnCard, AssistantTurnCard } from '@/components/sessions/replay/turn-cards'
 import { TokenAccumulationChart } from '@/components/sessions/replay/token-accumulation-chart'
+import { ContextWindowTimeline } from '@/components/sessions/replay/context-window-timeline'
 import { SessionBadges } from '@/components/sessions/session-badges'
 import { formatCost, formatTokens, formatDuration, projectDisplayName } from '@/lib/decode'
 import type { ReplayData, SessionWithFacet } from '@/types/claude'
@@ -234,8 +235,9 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      {/* Token accumulation chart */}
-      <div className="border-t border-border px-4 py-4">
+      {/* Context window + token charts */}
+      <div className="space-y-4 border-t border-border px-4 py-4">
+        <ContextWindowTimeline turns={replay.turns} compactions={replay.compactions} />
         <TokenAccumulationChart turns={replay.turns} compactions={replay.compactions} />
       </div>
     </div>
