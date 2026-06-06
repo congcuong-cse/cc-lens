@@ -97,17 +97,19 @@ export function ContextWindowTimeline({ turns, compactions }: Props) {
   const peak = useMemo(() => data.reduce((m, p) => Math.max(m, p.occupancy), 0), [data])
 
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
-  // Default the inspector to the turn where the window was fullest.
-  const [pinnedIdx, setPinnedIdx] = useState(() => {
-    if (points.length === 0) return 0
-    let best = 0
-    points.forEach((p, i) => { if (p.occupancy > points[best].occupancy) best = i })
-    return best
-  })
+  // Default to the final turn so the full timeline is visible; scrub left to
+  // replay how the window filled up.
+  const [pinnedIdx, setPinnedIdx] = useState(() => Math.max(0, points.length - 1))
 
   if (data.length === 0) return null
 
-  const activeIdx = Math.min(hoverIdx ?? pinnedIdx, data.length - 1)
+  // The scrubber/click position is the cutoff: the timeline shows this turn and
+  // everything before it. Hovering only previews within the visible range, so
+  // inspecting a turn never collapses the chart.
+  const cutoff = Math.min(pinnedIdx, data.length - 1)
+  const cutoffTurn = data[cutoff].turn
+  const chartData = data.slice(0, cutoff + 1)
+  const activeIdx = hoverIdx != null ? Math.min(hoverIdx, cutoff) : cutoff
   const active = data[activeIdx]
   const limitColor = active.pct > 90 ? '#dc2626' : active.pct > 75 ? '#d97706' : '#16a34a'
   const free = Math.max(0, limit - active.occupancy)
@@ -174,7 +176,7 @@ export function ContextWindowTimeline({ turns, compactions }: Props) {
         <div>
           <ResponsiveContainer width="100%" height={220}>
             <ComposedChart
-              data={data}
+              data={chartData}
               margin={{ top: 8, right: 8, bottom: 4, left: 0 }}
               onMouseMove={state => {
                 if (state?.activeTooltipIndex != null) setHoverIdx(state.activeTooltipIndex as number)
@@ -187,6 +189,9 @@ export function ContextWindowTimeline({ turns, compactions }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis
                 dataKey="turn"
+                type="number"
+                domain={[data[0].turn, data[data.length - 1].turn]}
+                allowDecimals={false}
                 tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
                 tickLine={false}
                 axisLine={false}
@@ -216,8 +221,8 @@ export function ContextWindowTimeline({ turns, compactions }: Props) {
                 label={{ value: 'limit', position: 'right', fontSize: 9, fill: '#dc2626' }}
               />
 
-              {/* Compaction events */}
-              {[...compactionTurns].map(idx => (
+              {/* Compaction events (only those at or before the selected turn) */}
+              {[...compactionTurns].filter(idx => idx <= cutoffTurn).map(idx => (
                 <ReferenceLine
                   key={idx}
                   x={idx}
