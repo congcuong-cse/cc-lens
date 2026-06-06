@@ -1,6 +1,6 @@
 'use client'
 
-import { use } from 'react'
+import { use, useState } from 'react'
 import useSWR from 'swr'
 import { TopBar } from '@/components/layout/top-bar'
 import { SessionSidebar } from '@/components/sessions/replay/session-sidebar'
@@ -30,6 +30,10 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     useSWR<{ session: SessionWithFacet }>(`/api/sessions/${id}`, fetcher)
 
   const meta = metaData?.session
+
+  // 0-based index into replay.turns; the timeline pins this and we show only
+  // conversation up to and including it. Defaults to showing everything.
+  const [selectedTurnIndex, setSelectedTurnIndex] = useState(Number.MAX_SAFE_INTEGER)
 
   if (replayError) {
     return (
@@ -199,9 +203,22 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Two-column layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Conversation replay */}
+        {/* Conversation replay — trimmed to the turn pinned in the timeline */}
         <div className="flex-1 min-w-0 overflow-y-auto px-4 py-6 max-w-6xl">
-          {replay.turns.map((turn, i) => {
+          {selectedTurnIndex < replay.turns.length - 1 && (
+            <div className="mb-4 flex items-center justify-between rounded-lg border border-[var(--viz-sky)]/30 bg-[var(--viz-sky)]/5 px-3 py-2 text-xs text-muted-foreground">
+              <span>
+                Showing turns <span className="font-semibold text-foreground/80">1–{selectedTurnIndex + 1}</span> of {replay.turns.length} · pinned from the context window timeline
+              </span>
+              <button
+                onClick={() => setSelectedTurnIndex(Number.MAX_SAFE_INTEGER)}
+                className="font-medium text-[var(--viz-sky)] hover:underline"
+              >
+                Show all
+              </button>
+            </div>
+          )}
+          {replay.turns.slice(0, selectedTurnIndex + 1).map((turn, i) => {
             const compactionBefore = compactionByTurnIndex.get(i)
 
             if (turn.type === 'user') {
@@ -237,7 +254,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Context window + token charts */}
       <div className="space-y-4 border-t border-border px-4 py-4">
-        <ContextWindowTimeline turns={replay.turns} compactions={replay.compactions} />
+        <ContextWindowTimeline turns={replay.turns} compactions={replay.compactions} onSelectTurn={setSelectedTurnIndex} />
         <TokenAccumulationChart turns={replay.turns} compactions={replay.compactions} />
       </div>
     </div>

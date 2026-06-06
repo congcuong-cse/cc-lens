@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ComposedChart,
   Area,
@@ -18,6 +18,9 @@ import type { ReplayTurn, CompactionEvent } from '@/types/claude'
 interface Props {
   turns: ReplayTurn[]
   compactions: CompactionEvent[]
+  // Reports the pinned turn's 0-based index into `turns`, so the conversation
+  // can show only messages up to and including the selected turn.
+  onSelectTurn?: (turnIndex: number) => void
 }
 
 // Honest, real categories that make up the prompt sent on each turn. These map
@@ -45,7 +48,7 @@ interface Point {
   pct: number
 }
 
-export function ContextWindowTimeline({ turns, compactions }: Props) {
+export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Props) {
   const points = useMemo<Point[]>(() => {
     const out: Point[] = []
     let turnIdx = 0
@@ -97,19 +100,23 @@ export function ContextWindowTimeline({ turns, compactions }: Props) {
   const peak = useMemo(() => data.reduce((m, p) => Math.max(m, p.occupancy), 0), [data])
 
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
-  // Default to the final turn so the full timeline is visible; scrub left to
-  // replay how the window filled up.
+  // Default the pin to the last turn so the full conversation shows; scrubbing
+  // back reveals the window state — and conversation — at an earlier turn.
   const [pinnedIdx, setPinnedIdx] = useState(() => Math.max(0, points.length - 1))
+
+  // Tell the parent which turn is pinned so it can trim the conversation. When
+  // pinned to the latest turn, report the full length so trailing non-usage
+  // turns stay visible — only scrubbing back trims the conversation.
+  const atLatest = pinnedIdx >= data.length - 1
+  const pinnedTurn = data[Math.min(pinnedIdx, data.length - 1)]?.turn
+  useEffect(() => {
+    if (pinnedTurn == null) return
+    onSelectTurn?.(atLatest ? turns.length - 1 : pinnedTurn - 1)
+  }, [pinnedTurn, atLatest, turns.length, onSelectTurn])
 
   if (data.length === 0) return null
 
-  // The scrubber/click position is the cutoff: the timeline shows this turn and
-  // everything before it. Hovering only previews within the visible range, so
-  // inspecting a turn never collapses the chart.
-  const cutoff = Math.min(pinnedIdx, data.length - 1)
-  const cutoffTurn = data[cutoff].turn
-  const chartData = data.slice(0, cutoff + 1)
-  const activeIdx = hoverIdx != null ? Math.min(hoverIdx, cutoff) : cutoff
+  const activeIdx = Math.min(hoverIdx ?? pinnedIdx, data.length - 1)
   const active = data[activeIdx]
   const limitColor = active.pct > 90 ? '#dc2626' : active.pct > 75 ? '#d97706' : '#16a34a'
   const free = Math.max(0, limit - active.occupancy)
@@ -176,7 +183,7 @@ export function ContextWindowTimeline({ turns, compactions }: Props) {
         <div>
           <ResponsiveContainer width="100%" height={220}>
             <ComposedChart
-              data={chartData}
+              data={data}
               margin={{ top: 8, right: 8, bottom: 4, left: 0 }}
               onMouseMove={state => {
                 if (state?.activeTooltipIndex != null) setHoverIdx(state.activeTooltipIndex as number)
@@ -189,9 +196,6 @@ export function ContextWindowTimeline({ turns, compactions }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis
                 dataKey="turn"
-                type="number"
-                domain={[data[0].turn, data[data.length - 1].turn]}
-                allowDecimals={false}
                 tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
                 tickLine={false}
                 axisLine={false}
@@ -221,8 +225,8 @@ export function ContextWindowTimeline({ turns, compactions }: Props) {
                 label={{ value: 'limit', position: 'right', fontSize: 9, fill: '#dc2626' }}
               />
 
-              {/* Compaction events (only those at or before the selected turn) */}
-              {[...compactionTurns].filter(idx => idx <= cutoffTurn).map(idx => (
+              {/* Compaction events */}
+              {[...compactionTurns].map(idx => (
                 <ReferenceLine
                   key={idx}
                   x={idx}
