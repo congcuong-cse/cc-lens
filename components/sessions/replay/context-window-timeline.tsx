@@ -11,6 +11,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatTokens, formatTokensExact, formatCost, formatDateTime } from '@/lib/decode'
 import { getContextLimit } from '@/lib/pricing'
 import type { ReplayTurn, CompactionEvent } from '@/types/claude'
@@ -37,6 +38,9 @@ const AUTO_COMPACT_FRACTION = 0.92
 
 interface Point {
   turn: number
+  // Assistant-only ordinal, matching the "#N" shown on each AssistantTurnCard.
+  // `turn` is the full-array position (drives trimming/X-axis); this is for display.
+  assistantTurn: number
   occupancy: number
   cacheRead: number
   cacheWrite: number
@@ -52,9 +56,14 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
   const points = useMemo<Point[]>(() => {
     const out: Point[] = []
     let turnIdx = 0
+    // Count every assistant turn (with or without usage) so the ordinal stays in
+    // lockstep with page.tsx's assistantTurnNum, which numbers the turn cards.
+    let assistantIdx = 0
     for (const t of turns) {
       turnIdx++
-      if (t.type !== 'assistant' || !t.usage) continue
+      if (t.type !== 'assistant') continue
+      assistantIdx++
+      if (!t.usage) continue
       const u = t.usage
       const cacheRead = u.cache_read_input_tokens ?? 0
       const cacheWrite = u.cache_creation_input_tokens ?? 0
@@ -62,6 +71,7 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
       const occupancy = cacheRead + cacheWrite + freshInput
       out.push({
         turn: turnIdx,
+        assistantTurn: assistantIdx,
         occupancy,
         cacheRead,
         cacheWrite,
@@ -92,6 +102,14 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
     [points, limit],
   )
 
+  // Plotting keys on the full-array `turn` (so the selected-turn marker and
+  // compaction lines stay aligned), but axis labels show the assistant-turn
+  // ordinal — the "#N" users see on cards and in the detail panel.
+  const turnToAssistant = useMemo(
+    () => new Map(data.map(d => [d.turn, d.assistantTurn])),
+    [data],
+  )
+
   const compactionTurns = useMemo(
     () => new Set(compactions.map(c => c.turn_index)),
     [compactions],
@@ -100,6 +118,9 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
   const peak = useMemo(() => data.reduce((m, p) => Math.max(m, p.occupancy), 0), [data])
 
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  // When sticky-pinned to the top of the conversation, the chart can be
+  // collapsed to just the at-a-glance gauge so it doesn't crowd the messages.
+  const [collapsed, setCollapsed] = useState(false)
   // Default the pin to the last turn so the full conversation shows; scrubbing
   // back reveals the window state — and conversation — at an earlier turn.
   const [pinnedIdx, setPinnedIdx] = useState(() => Math.max(0, points.length - 1))
@@ -135,19 +156,33 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
           <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
             Context Window Timeline
           </h3>
-          <p className="mt-0.5 text-xs text-muted-foreground/70">
-            How full the context window was on each assistant turn — hover to inspect, click to pin
-          </p>
+          {!collapsed && (
+            <p className="mt-0.5 text-xs text-muted-foreground/70">
+              How full the context window was on each assistant turn — hover to inspect, click to pin
+            </p>
+          )}
         </div>
-        <div className="text-right">
-          <div className="font-mono text-xl font-bold tabular-nums leading-none" style={{ color: limitColor }}>
-            {active.pct.toFixed(1)}%
-            <span className="ml-1.5 text-xs font-medium text-muted-foreground">full</span>
+        <div className="flex items-start gap-2">
+          <div className="text-right">
+            <div className="font-mono text-xl font-bold tabular-nums leading-none" style={{ color: limitColor }}>
+              {active.pct.toFixed(1)}%
+              <span className="ml-1.5 text-xs font-medium text-muted-foreground">full</span>
+            </div>
+            <div className="mt-1 font-mono text-xs text-muted-foreground">
+              {formatTokens(active.occupancy)} / {formatTokens(limit)}
+              {limit >= 1_000_000 && <span className="ml-1 text-emerald-500">· 1M</span>}
+            </div>
           </div>
-          <div className="mt-1 font-mono text-xs text-muted-foreground">
-            {formatTokens(active.occupancy)} / {formatTokens(limit)}
-            {limit >= 1_000_000 && <span className="ml-1 text-emerald-500">· 1M</span>}
-          </div>
+          <button
+            type="button"
+            onClick={() => setCollapsed(c => !c)}
+            className="rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? 'Expand timeline chart' : 'Collapse timeline chart'}
+            title={collapsed ? 'Expand chart' : 'Collapse chart'}
+          >
+            {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
         </div>
       </div>
 
@@ -170,14 +205,51 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
           )
         })}
       </div>
-      <div className="mb-4 flex items-center justify-between text-[11px] text-muted-foreground/70">
+      <div className="mb-2 flex items-center justify-between text-[11px] text-muted-foreground/70">
         <span>
-          Turn {active.turn}
+          Turn {active.assistantTurn}
           {active.model && <span className="ml-1.5 font-mono">{active.model.replace(/^claude-/, '')}</span>}
         </span>
         <span className="font-mono">{formatDateTime(active.timestamp)}</span>
       </div>
 
+      {/* Turn scrubber — stays visible even when the chart is collapsed */}
+      <div className={`flex items-center gap-2 ${collapsed ? '' : 'mb-4'}`}>
+        <button
+          type="button"
+          onClick={() => { setHoverIdx(null); setPinnedIdx(i => Math.max(0, i - 1)) }}
+          disabled={pinnedIdx <= 0}
+          className="rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+          aria-label="Previous turn"
+          title="Previous turn"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={data.length - 1}
+          value={pinnedIdx}
+          onChange={e => { setPinnedIdx(Number(e.target.value)); setHoverIdx(null) }}
+          className="flex-1 accent-[var(--viz-sky)]"
+          aria-label="Scrub through turns"
+        />
+        <button
+          type="button"
+          onClick={() => { setHoverIdx(null); setPinnedIdx(i => Math.min(data.length - 1, i + 1)) }}
+          disabled={pinnedIdx >= data.length - 1}
+          className="rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+          aria-label="Next turn"
+          title="Next turn"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <span className="ml-1 whitespace-nowrap font-mono text-[11px] tabular-nums text-muted-foreground">
+          {pinnedIdx + 1}/{data.length}
+        </span>
+      </div>
+
+      {!collapsed && (
       <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
         {/* Chart */}
         <div>
@@ -186,16 +258,19 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
               data={data}
               margin={{ top: 8, right: 8, bottom: 4, left: 0 }}
               onMouseMove={state => {
-                if (state?.activeTooltipIndex != null) setHoverIdx(state.activeTooltipIndex as number)
+                // recharts 3 reports activeTooltipIndex as a string ("5"); coerce
+                // so state stays numeric and `pinnedIdx + 1` doesn't concatenate.
+                if (state?.activeTooltipIndex != null) setHoverIdx(Number(state.activeTooltipIndex))
               }}
               onMouseLeave={() => setHoverIdx(null)}
               onClick={state => {
-                if (state?.activeTooltipIndex != null) setPinnedIdx(state.activeTooltipIndex as number)
+                if (state?.activeTooltipIndex != null) setPinnedIdx(Number(state.activeTooltipIndex))
               }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis
                 dataKey="turn"
+                tickFormatter={t => String(turnToAssistant.get(Number(t)) ?? t)}
                 tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
                 tickLine={false}
                 axisLine={false}
@@ -273,22 +348,12 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
               <span className="text-[11px] text-muted-foreground">Auto-compact zone</span>
             </div>
           </div>
-
-          <input
-            type="range"
-            min={0}
-            max={data.length - 1}
-            value={pinnedIdx}
-            onChange={e => { setPinnedIdx(Number(e.target.value)); setHoverIdx(null) }}
-            className="mt-3 w-full accent-[var(--viz-sky)]"
-            aria-label="Scrub through turns"
-          />
         </div>
 
         {/* Detail panel for the selected turn */}
         <div className="rounded-lg border border-border bg-muted/30 p-3">
           <div className="mb-2 flex items-baseline justify-between">
-            <span className="text-xs font-semibold text-foreground">Turn {active.turn}</span>
+            <span className="text-xs font-semibold text-foreground">Turn {active.assistantTurn}</span>
             <span className="font-mono text-xs text-[#d97706]">{formatCost(active.cost)}</span>
           </div>
 
@@ -317,10 +382,10 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
               <span className="text-muted-foreground">Window used</span>
               <span className="font-mono font-semibold" style={{ color: limitColor }}>{formatTokensExact(active.occupancy)}</span>
             </div>
-            <div className="flex justify-between">
+            {/* <div className="flex justify-between">
               <span className="text-muted-foreground">Headroom</span>
               <span className="font-mono text-foreground/80">{formatTokens(free)}</span>
-            </div>
+            </div> */}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Output generated</span>
               <span className="font-mono text-foreground/80">{formatTokens(active.output)}</span>
@@ -343,6 +408,7 @@ export function ContextWindowTimeline({ turns, compactions, onSelectTurn }: Prop
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import type { TurnUsage, ModelUsage } from '@/types/claude'
+import type { TurnUsage, ModelUsage, CostBreakdown } from '@/types/claude'
 
 interface ModelPricing {
   input: number
@@ -111,13 +111,18 @@ function getPricing(model: string): ModelPricing {
 }
 
 export function estimateCostFromUsage(model: string, usage: TurnUsage): number {
+  return costBreakdownFromUsage(model, usage).total
+}
+
+// Same calculation as estimateCostFromUsage, but keeps each category's dollar
+// contribution separate so the UI can show how the cost is built up.
+export function costBreakdownFromUsage(model: string, usage: TurnUsage): CostBreakdown {
   const p = getPricing(model)
-  return (
-    (usage.input_tokens                ?? 0) * p.input      +
-    (usage.output_tokens               ?? 0) * p.output     +
-    (usage.cache_creation_input_tokens ?? 0) * p.cacheWrite +
-    (usage.cache_read_input_tokens     ?? 0) * p.cacheRead
-  )
+  const input      = (usage.input_tokens                ?? 0) * p.input
+  const output     = (usage.output_tokens               ?? 0) * p.output
+  const cacheWrite = (usage.cache_creation_input_tokens ?? 0) * p.cacheWrite
+  const cacheRead  = (usage.cache_read_input_tokens     ?? 0) * p.cacheRead
+  return { input, output, cacheWrite, cacheRead, total: input + output + cacheWrite + cacheRead }
 }
 
 export function estimateCostFromSessionMeta(

@@ -1,6 +1,6 @@
 'use client'
 
-import { formatCost, formatTokens, formatDuration, projectDisplayName } from '@/lib/decode'
+import { formatCost, formatTokens, formatTokensExact, formatDuration, projectDisplayName } from '@/lib/decode'
 import type { ReplayData, SessionMeta } from '@/types/claude'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -48,11 +48,25 @@ export function SessionSidebar({ replay, meta }: Props) {
 
   const assistantTurns = replay.turns.filter(t => t.type === 'assistant')
 
+  // A compaction's `turn_index` is a position in the full turns array (user +
+  // assistant). Convert it to the assistant-turn ordinal it precedes so the
+  // "Before turn N" label matches the "#N" shown on the conversation cards.
+  const assistantOrdinalAt = (turnIndex: number) => {
+    let n = 0
+    for (let i = 0; i < turnIndex && i < replay.turns.length; i++) {
+      if (replay.turns[i].type === 'assistant') n++
+    }
+    return n + 1
+  }
+
+  // Per-category dollar cost, computed server-side so it reconciles with the
+  // session total even when user pricing overrides are in play.
+  const cb = replay.cost_breakdown
   const tokenBreakdown = [
-    { label: 'Input', val: totalInput, color: 'var(--viz-sky)', bg: 'bg-blue-700 dark:bg-blue-400' },
-    { label: 'Output', val: totalOutput, color: '#d97706', bg: 'bg-amber-500' },
-    { label: 'Cache Write', val: totalCacheWrite, color: '#a78bfa', bg: 'bg-violet-400' },
-    { label: 'Cache Read', val: totalCacheRead, color: '#34d399', bg: 'bg-emerald-400' },
+    { label: 'Input', val: totalInput, cost: cb?.input ?? 0, color: 'var(--viz-sky)', bg: 'bg-blue-700 dark:bg-blue-400' },
+    { label: 'Output', val: totalOutput, cost: cb?.output ?? 0, color: '#d97706', bg: 'bg-amber-500' },
+    { label: 'Cache Write', val: totalCacheWrite, cost: cb?.cacheWrite ?? 0, color: '#a78bfa', bg: 'bg-violet-400' },
+    { label: 'Cache Read', val: totalCacheRead, cost: cb?.cacheRead ?? 0, color: '#34d399', bg: 'bg-emerald-400' },
   ]
 
   const showTools = topTools.length > 0
@@ -60,21 +74,54 @@ export function SessionSidebar({ replay, meta }: Props) {
 
   return (
     <div className="text-sm">
-      {/* Token breakdown */}
+      {/* Summary — tokens and what each category cost */}
       <section>
         <SectionTitle>
           <span className="inline-flex items-center gap-1.5">
-            <Cpu className="h-3.5 w-3.5" /> Token breakdown
+            <Cpu className="h-3.5 w-3.5" /> Summary
           </span>
         </SectionTitle>
+        <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground/50">
+          <span>Category</span>
+          <div className="flex items-center gap-3">
+            <span>Tokens</span>
+            <span className="w-14 text-right">Cost</span>
+          </div>
+        </div>
         <div className="space-y-3">
-          {tokenBreakdown.map(({ label, val, color, bg }) => (
+          {tokenBreakdown.map(({ label, val, cost, color, bg }) => {
+            // Effective unit price actually paid for this category, in $ per
+            // million tokens. cost = tokens × rate, so cost / tokens is the rate.
+            const ratePerM = val > 0 ? (cost / val) * 1_000_000 : 0
+            return (
             <div key={label} className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">{label}</span>
-                <span className="font-mono text-xs font-semibold" style={{ color }}>
-                  {formatTokens(val)}
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 text-xs text-muted-foreground">
+                  {label}
+                  {val > 0 && (
+                    <span
+                      className="ml-1.5 font-mono text-[10px] text-muted-foreground/40"
+                      title={`Unit price: ${formatCost(ratePerM)} per million tokens`}
+                    >
+                      @ {formatCost(ratePerM)}/M
+                    </span>
+                  )}
                 </span>
+                <div className="flex items-center gap-3">
+                  <span
+                    className="font-mono text-xs font-semibold tabular-nums"
+                    style={{ color }}
+                    title={`${formatTokensExact(val)} tokens`}
+                  >
+                    {formatTokens(val)}
+                  </span>
+                  <span
+                    className="w-14 text-right font-mono text-xs tabular-nums text-foreground/60"
+                    title={`${formatCost(cost)} = ${formatTokensExact(val)} tokens × ${formatCost(ratePerM)}/M`}
+                  >
+                    {formatCost(cost)}
+                  </span>
+                </div>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
@@ -83,15 +130,26 @@ export function SessionSidebar({ replay, meta }: Props) {
                 />
               </div>
             </div>
-          ))}
-          <div className="flex items-center justify-between border-t border-border/50 pt-3">
+            )
+          })}
+          <div className="flex items-center justify-between gap-2 border-t border-border/50 pt-3">
             <span className="text-xs font-semibold text-muted-foreground">Total</span>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-bold text-foreground">{formatTokens(totalTokens)}</span>
-              <span className="font-mono text-xs font-bold text-[#d97706]">{formatCost(replay.total_cost)}</span>
+            <div className="flex items-center gap-3">
+              <span
+                className="font-mono text-xs font-bold tabular-nums text-foreground"
+                title={`${formatTokensExact(totalTokens)} tokens`}
+              >
+                {formatTokens(totalTokens)}
+              </span>
+              <span className="w-14 text-right font-mono text-xs font-bold tabular-nums text-[#d97706]">
+                {formatCost(replay.total_cost)}
+              </span>
             </div>
           </div>
         </div>
+        <p className="mt-2 text-[10px] leading-snug text-muted-foreground/50">
+          Cost = tokens × unit price (shown per row as $/M tokens). Hover any value for exact figures.
+        </p>
       </section>
 
       {showTools && (
@@ -138,7 +196,7 @@ export function SessionSidebar({ replay, meta }: Props) {
                   <Zap className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" />
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-medium text-amber-300/80">Turn {c.turn_index}</span>
+                      <span className="text-xs font-medium text-amber-300/80">Before turn {assistantOrdinalAt(c.turn_index)}</span>
                       <Badge
                         variant="outline"
                         className="h-4 border-amber-500/30 px-1 py-0 text-[11px] text-amber-400/70"

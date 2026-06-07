@@ -7,7 +7,7 @@ import type {
   ToolCall,
   AgentToolResult,
 } from '@/types/claude'
-import { estimateCostFromUsage } from '@/lib/pricing'
+import { costBreakdownFromUsage } from '@/lib/pricing'
 import { readJSONLLines } from '@/lib/claude-reader'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,6 +28,7 @@ export async function parseSessionReplay(
   let version: string | undefined
   let gitBranch: string | undefined
   let totalCost = 0
+  const costBreakdown = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 }
 
   // Build a map of turn_duration events keyed by parentUuid
   const turnDurations: Map<string, number> = new Map()
@@ -160,11 +161,17 @@ export async function parseSessionReplay(
         }
       }
 
-      const estimated_cost = model && usage
-        ? estimateCostFromUsage(model, usage)
-        : 0
+      const breakdown = model && usage ? costBreakdownFromUsage(model, usage) : null
+      const estimated_cost = breakdown?.total ?? 0
 
       totalCost += estimated_cost
+      if (breakdown) {
+        costBreakdown.input      += breakdown.input
+        costBreakdown.output     += breakdown.output
+        costBreakdown.cacheWrite += breakdown.cacheWrite
+        costBreakdown.cacheRead  += breakdown.cacheRead
+        costBreakdown.total      += breakdown.total
+      }
 
       const turn_duration_ms = l.uuid ? turnDurations.get(l.uuid) : undefined
 
@@ -186,5 +193,5 @@ export async function parseSessionReplay(
     }
   }
 
-  return { session_id: sessionId, slug, version, git_branch: gitBranch, turns, compactions, summaries, total_cost: totalCost }
+  return { session_id: sessionId, slug, version, git_branch: gitBranch, turns, compactions, summaries, total_cost: totalCost, cost_breakdown: costBreakdown }
 }

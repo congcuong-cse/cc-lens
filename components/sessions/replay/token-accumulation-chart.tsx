@@ -21,19 +21,23 @@ interface Props {
 
 export function TokenAccumulationChart({ turns, compactions }: Props) {
   const data = useMemo(() => {
-    const points: Array<{ turn: number; tokens: number; cost: number; label: string }> = []
+    // `turn` is the full-array position (keeps compaction lines aligned);
+    // `assistantTurn` is the assistant-only ordinal shown to users as "#N".
+    const points: Array<{ turn: number; assistantTurn: number; tokens: number; cost: number }> = []
     let cumCost = 0
     let cumTokens = 0
     let turnIdx = 0
+    let assistantIdx = 0
 
     for (const t of turns) {
       turnIdx++
-      if (t.type === 'assistant' && t.usage) {
-        const u = t.usage
-        cumTokens = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
-        cumCost += t.estimated_cost ?? 0
-        points.push({ turn: turnIdx, tokens: cumTokens, cost: cumCost, label: `Turn ${turnIdx}` })
-      }
+      if (t.type !== 'assistant') continue
+      assistantIdx++
+      if (!t.usage) continue
+      const u = t.usage
+      cumTokens = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
+      cumCost += t.estimated_cost ?? 0
+      points.push({ turn: turnIdx, assistantTurn: assistantIdx, tokens: cumTokens, cost: cumCost })
     }
     return points
   }, [turns])
@@ -41,6 +45,11 @@ export function TokenAccumulationChart({ turns, compactions }: Props) {
   const compactionTurnIndices = useMemo(
     () => compactions.map(c => c.turn_index),
     [compactions]
+  )
+
+  const turnToAssistant = useMemo(
+    () => new Map(data.map(d => [d.turn, d.assistantTurn])),
+    [data],
   )
 
   if (data.length === 0) return null
@@ -55,6 +64,7 @@ export function TokenAccumulationChart({ turns, compactions }: Props) {
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis
             dataKey="turn"
+            tickFormatter={t => String(turnToAssistant.get(Number(t)) ?? t)}
             tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
             tickLine={false}
             axisLine={false}
@@ -69,6 +79,7 @@ export function TokenAccumulationChart({ turns, compactions }: Props) {
           />
           <Tooltip
             contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}
+            labelFormatter={t => `Turn ${turnToAssistant.get(Number(t)) ?? t}`}
             formatter={(val: number | undefined, name?: string) => [
               name === 'tokens' ? formatTokens(val ?? 0) : formatCost(val ?? 0),
               name === 'tokens' ? 'Context tokens' : 'Cumulative cost',

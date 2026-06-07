@@ -190,6 +190,17 @@ export interface SubagentInfo {
   meta: SubagentMeta
 }
 
+// Dollar cost attributed to each usage category, summed across the session.
+// Computed server-side so it stays consistent with `total_cost` and honours
+// any user pricing overrides.
+export interface CostBreakdown {
+  input: number
+  output: number
+  cacheWrite: number
+  cacheRead: number
+  total: number
+}
+
 export interface ReplayData {
   session_id: string
   slug?: string
@@ -199,6 +210,7 @@ export interface ReplayData {
   compactions: CompactionEvent[]
   summaries: SummaryEvent[]
   total_cost: number
+  cost_breakdown: CostBreakdown
 }
 
 // ─── Project Summary ──────────────────────────────────────────────────────────
