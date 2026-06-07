@@ -15,6 +15,9 @@ import { ChevronDown, ChevronUp, Brain, Clock, Coins } from 'lucide-react'
 /** Show “Show more” when assistant text exceeds this length (markdown; avoid slicing mid-block). */
 const ASSISTANT_COLLAPSE_THRESHOLD = 900
 
+/** Collapse long user prompts behind a “Show more” toggle past this length. */
+const USER_COLLAPSE_THRESHOLD = 600
+
 interface TurnCardProps {
   turn: ReplayTurn
   turnNumber: number
@@ -56,6 +59,46 @@ function TokenBreakdown({ turn }: { turn: ReplayTurn }) {
   )
 }
 
+function UserMessageBubble({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const needsExpandToggle = text.length > USER_COLLAPSE_THRESHOLD
+
+  return (
+    <div className="max-w-[85%] bg-primary/10 border border-primary/20 rounded-2xl rounded-tr-sm px-4 py-3">
+      <div className={cn('relative', needsExpandToggle && !expanded && 'max-h-40 overflow-hidden')}>
+        <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
+          {text}
+        </p>
+        {needsExpandToggle && !expanded && (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-linear-to-t from-primary/10 to-transparent"
+            aria-hidden
+          />
+        )}
+      </div>
+      {needsExpandToggle && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mt-1.5 h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setExpanded(e => !e)}
+        >
+          {expanded ? (
+            <>
+              <ChevronUp className="h-3 w-3" /> Show less
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3 w-3" /> Show more
+            </>
+          )}
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export function UserTurnCard({ turn, compactionBefore }: TurnCardProps) {
   return (
     <div>
@@ -68,13 +111,7 @@ export function UserTurnCard({ turn, compactionBefore }: TurnCardProps) {
         </span>
 
         {/* User bubble (right-aligned) */}
-        {turn.text && (
-          <div className="max-w-[85%] bg-primary/10 border border-primary/20 rounded-2xl rounded-tr-sm px-4 py-3">
-            <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
-              {turn.text}
-            </p>
-          </div>
-        )}
+        {turn.text && <UserMessageBubble text={turn.text} />}
 
         {/* Tool results (user feedback) */}
         {turn.tool_results && turn.tool_results.length > 0 && (
