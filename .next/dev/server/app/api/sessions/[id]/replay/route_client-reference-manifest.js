@@ -1,0 +1,1 @@
+globalThis.__RSC_MANIFEST=(globalThis.__RSC_MANIFEST||{});globalThis.__RSC_MANIFEST["/api/sessions/[id]/replay/route"]={"moduleLoading":{"prefix":"/_next/"},"ssrModuleMapping":{},"edgeSSRModuleMapping":{},"clientModules":{},"entryCSSFiles":{"/home/cuongpc/projects/cc-lens/app/api/sessions/[id]/replay/route":[]},"rscModuleMapping":{},"edgeRscModuleMapping":{}};

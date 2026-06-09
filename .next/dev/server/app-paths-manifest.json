@@ -1,0 +1,7 @@
+{
+  "/api/sessions/[id]/subagents/[agentId]/route": "app/api/sessions/[id]/subagents/[agentId]/route.js",
+  "/page": "app/page.js",
+  "/sessions/page": "app/sessions/page.js",
+  "/sessions/[id]/page": "app/sessions/[id]/page.js",
+  "/sessions/[id]/subagents/[agentId]/page": "app/sessions/[id]/subagents/[agentId]/page.js"
+}

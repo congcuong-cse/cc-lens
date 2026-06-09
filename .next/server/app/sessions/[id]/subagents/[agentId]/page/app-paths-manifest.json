@@ -1,0 +1,3 @@
+{
+  "/sessions/[id]/subagents/[agentId]/page": "app/sessions/[id]/subagents/[agentId]/page.js"
+}
