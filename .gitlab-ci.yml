@@ -4,6 +4,8 @@ stages:
 
 default:
   image: node:20
+  tags:
+    - ci
   cache:
     key:
       files:
