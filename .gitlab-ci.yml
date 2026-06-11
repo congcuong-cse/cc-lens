@@ -1,6 +1,7 @@
 stages:
   - lint-and-build
   - publish
+  - ai
 
 claude:
   stage: ai
