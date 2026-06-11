@@ -7,7 +7,6 @@ claude:
   stage: ai
   tags:
     - claude
-  image: node:20
   # Adjust rules to fit how you want to trigger the job:
   # - manual runs
   # - merge request events
@@ -17,10 +16,6 @@ claude:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   variables:
     GIT_STRATEGY: fetch
-  before_script:
-    - apk update
-    - apk add --no-cache git curl bash
-    - curl -fsSL https://claude.ai/install.sh | bash
   script:
     # Optional: start a GitLab MCP server if your setup provides one
     - /bin/gitlab-mcp-server || true
