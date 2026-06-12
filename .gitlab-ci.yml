@@ -20,10 +20,11 @@ claude:
     # Optional: start a GitLab MCP server if your setup provides one
     - /bin/gitlab-mcp-server || true
     # Use AI_FLOW_* variables when invoking via web/API triggers with context payloads
-    - echo "$AI_FLOW_INPUT for $AI_FLOW_CONTEXT on $AI_FLOW_EVENT"
+    - echo "$AI_FLOW_INPUT"
     - >
       claude
-      -p "${AI_FLOW_INPUT:-'Review this MR and implement the requested changes'}"
+      -p "${AI_FLOW_INPUT:-'Review this MR (branch: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME).
+          Apply safe fixes by committing them to that branch via the gitlab push_files tool, then post one MR comment summarizing the review and what you changed.'}"
       --permission-mode acceptEdits
       --allowedTools "Bash Read Edit Write mcp__gitlab"
       --debug
